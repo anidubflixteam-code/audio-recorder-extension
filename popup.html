@@ -23,6 +23,17 @@
         <div id="timer" class="timer">00:00</div>
       </div>
 
+      <!-- Config/Settings Panel -->
+      <div class="settings-panel" id="settings-panel">
+        <label for="bitrate-select">Audio Quality:</label>
+        <select id="bitrate-select">
+          <option value="128000">Standard (128 kbps)</option>
+          <option value="192000">High (192 kbps)</option>
+          <option value="256000" selected>Ultra High (256 kbps)</option>
+          <option value="320000">Master Lossless (320 kbps)</option>
+        </select>
+      </div>
+
       <!-- Visualizer animation -->
       <div class="visualizer-container" id="visualizer">
         <div class="bar"></div>
@@ -35,18 +46,25 @@
         <div class="bar"></div>
       </div>
 
-      <div class="controls">
+      <div class="controls-area">
         <button id="record-btn" class="btn btn-start">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
             <circle cx="12" cy="12" r="10" />
           </svg>
           <span id="btn-text">Start Capture</span>
         </button>
+
+        <button id="pause-btn" class="btn btn-pause" style="display: none;">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+          <span id="pause-btn-text">Pause</span>
+        </button>
       </div>
     </main>
     
     <footer class="footer">
-      <span>High-Quality 256kbps Stereo supported</span>
+      <span>High-Quality Stereo Recording</span>
     </footer>
   </div>
   <script src="popup.js"></script>
