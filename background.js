@@ -1,6 +1,7 @@
 // background.js - FIXED VERSION
 let pendingRecording = null;
 
+// Function to check if offscreen document is active
 async function hasOffscreenDocument() {
   const contexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT']
@@ -14,6 +15,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       const { streamId, tabTitle, bitrate } = message;
       pendingRecording = { streamId, tabTitle, bitrate };
 
+      // Create offscreen document if it doesn't exist
       const exists = await hasOffscreenDocument();
       if (!exists) {
         try {
@@ -23,11 +25,12 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
             justification: 'Record high quality audio from tab'
           });
         } catch (err) {
-          console.error('Offscreen creation failed:', err);
-          sendErrorToPopup('Failed to create offscreen document: ' + err.message);
+          console.error('Failed to create offscreen doc:', err);
+          sendErrorToPopup('Could not initialize recording engine (Offscreen failed).');
           pendingRecording = null;
         }
       } else {
+        // If already exists, start recording immediately
         chrome.runtime.sendMessage({
           target: 'offscreen',
           type: 'start-recording',
@@ -66,7 +69,8 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       }
 
     } else if (message.type === 'download-file') {
-      const cleanTitle = (message.tabTitle || 'audio').replace(/[^a-zA-Z0-9]/g, '_');
+      // Use official Chrome Downloads API
+      const cleanTitle = (message.tabTitle || 'audio').replace(/[^a-z0-9]/gi, '_').toLowerCase();
       const filename = `Audio_${cleanTitle}_${Date.now()}.webm`;
 
       chrome.downloads.download({
@@ -74,6 +78,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         filename: filename,
         saveAs: false
       }, () => {
+        // Clean up after download completes
         cleanup(true);
       });
 
@@ -85,17 +90,17 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 });
 
 function sendErrorToPopup(msg) {
-    chrome.runtime.sendMessage({
-        target: 'popup',
-        type: 'recording-error',
-        error: msg
-    }).catch(() => {});
+  chrome.runtime.sendMessage({
+    target: 'popup',
+    type: 'recording-error',
+    error: msg
+  }).catch(() => { /* popup closed */ });
 }
 
 async function cleanup(isNormalStop) {
   await chrome.storage.local.set({ isRecording: false, isPaused: false });
   
-  // Give download a chance to start before killing offscreen
+  // Delay closing to allow download handoff
   setTimeout(async () => {
       if (await hasOffscreenDocument()) {
         try { await chrome.offscreen.closeDocument(); } catch(e) {}
@@ -105,7 +110,7 @@ async function cleanup(isNormalStop) {
         chrome.runtime.sendMessage({
           target: 'popup',
           type: 'recording-stopped-ack'
-        }).catch(() => {});
+        }).catch(() => { /* popup closed */ });
       }
   }, 1000);
 }
