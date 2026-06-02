@@ -1,8 +1,9 @@
 let mediaRecorder;
 let recordedChunks = [];
 let audioContext;
+let streamInstance;
 
-// Signal the background script that offscreen document is ready
+// Notify background that offscreen is ready
 chrome.runtime.sendMessage({
   target: 'background',
   type: 'offscreen-ready'
@@ -11,16 +12,19 @@ chrome.runtime.sendMessage({
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.target === 'offscreen') {
     if (message.type === 'start-recording') {
-      startRecording(message.streamId, message.tabTitle);
+      startRecording(message.streamId, message.tabTitle, message.bitrate);
     } else if (message.type === 'stop-recording') {
       stopRecording();
+    } else if (message.type === 'pause-recording') {
+      pauseRecording();
+    } else if (message.type === 'resume-recording') {
+      resumeRecording();
     }
   }
 });
 
-async function startRecording(streamId, tabTitle) {
+async function startRecording(streamId, tabTitle, bitrate) {
   try {
-    // Capture tab's audio stream
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         mandatory: {
@@ -31,15 +35,14 @@ async function startRecording(streamId, tabTitle) {
       video: false
     });
 
-    // Keep audio playing in speakers while capturing so the user can hear it
+    streamInstance = stream;
     audioContext = new AudioContext();
     const source = audioContext.createMediaStreamSource(stream);
     source.connect(audioContext.destination);
 
-    // High quality settings (256kbps Opus Codec Stereo)
     const options = {
       mimeType: 'audio/webm;codecs=opus',
-      audioBitsPerSecond: 256000 
+      audioBitsPerSecond: parseInt(bitrate) || 256000 
     };
 
     recordedChunks = [];
@@ -55,37 +58,25 @@ async function startRecording(streamId, tabTitle) {
       const blob = new Blob(recordedChunks, { type: 'audio/webm' });
       const url = URL.createObjectURL(blob);
       
-      // Name the file based on tab title
-      const cleanTitle = (tabTitle || 'audio').replace(/[^a-zA-Z0-9]/g, '_');
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `${cleanTitle}_${Date.now()}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      
-      // Cleanup
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
+      // Send blob URL to background to download via chrome.downloads
+      chrome.runtime.sendMessage({ 
+        target: 'background', 
+        type: 'download-file', 
+        url: url,
+        tabTitle: tabTitle
+      });
+
       // Stop tracks
-      stream.getTracks().forEach(track => track.stop());
+      streamInstance.getTracks().forEach(track => track.stop());
       if (audioContext) {
         audioContext.close();
       }
-      
-      // Notify background script
-      chrome.runtime.sendMessage({ 
-        target: 'background', 
-        type: 'recording-stopped' 
-      });
     };
 
     mediaRecorder.start();
 
   } catch (error) {
-    console.error('Error in offscreen capture:', error);
-    // Notify background for safe state cleanup
+    console.error('Offscreen error:', error);
     chrome.runtime.sendMessage({ 
       target: 'background', 
       type: 'recording-error', 
@@ -97,5 +88,17 @@ async function startRecording(streamId, tabTitle) {
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
+  }
+}
+
+function pauseRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.pause();
+  }
+}
+
+function resumeRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'paused') {
+    mediaRecorder.resume();
   }
 }
