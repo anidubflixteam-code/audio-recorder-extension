@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Audio Capture Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="card">
+    <header class="header">
+      <div class="logo-area">
+        <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8" />
+        </svg>
+        <h1>Audio Capture Pro</h1>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="status-panel">
+        <div id="tab-indicator" class="tab-indicator">Ready to record tab audio</div>
+        <div id="timer" class="timer">00:00</div>
+      </div>
+
+      <!-- Visualizer animation -->
+      <div class="visualizer-container" id="visualizer">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+      </div>
+
+      <div class="controls">
+        <button id="record-btn" class="btn btn-start">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="10" />
+          </svg>
+          <span id="btn-text">Start Capture</span>
+        </button>
+      </div>
+    </main>
+    
+    <footer class="footer">
+      <span>High-Quality 256kbps Stereo supported</span>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
