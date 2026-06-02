@@ -4,6 +4,7 @@ let recordedChunks = [];
 let audioContext;
 let streamInstance;
 
+// Notify background that offscreen is ready
 chrome.runtime.sendMessage({
   target: 'background',
   type: 'offscreen-ready'
@@ -36,10 +37,11 @@ async function startRecording(streamId, tabTitle, bitrate) {
     });
 
     streamInstance = stream;
-    // IMPORTANT: Resume AudioContext if suspended
+    
+    // IMPORTANT: Ensure AudioContext is running
     audioContext = new AudioContext();
     if (audioContext.state === 'suspended') {
-        await audioContext.resume();
+      await audioContext.resume();
     }
     const source = audioContext.createMediaStreamSource(stream);
     source.connect(audioContext.destination);
@@ -69,17 +71,20 @@ async function startRecording(streamId, tabTitle, bitrate) {
         tabTitle: tabTitle
       });
 
+      // Cleanup tracks and context
       if (streamInstance) streamInstance.getTracks().forEach(track => track.stop());
       if (audioContext) setTimeout(() => audioContext.close(), 500);
     };
 
-    mediaRecorder.start(1000); // Slice data every second
+    mediaRecorder.start(1000);
 
   } catch (error) {
+    console.error('Offscreen error:', error);
+    if (streamInstance) streamInstance.getTracks().forEach(track => track.stop());
     chrome.runtime.sendMessage({ 
       target: 'background', 
       type: 'recording-error', 
-      error: error.message || 'Offscreen getUserMedia failed'
+      error: error.message || 'Offscreen capture failed'
     });
   }
 }
