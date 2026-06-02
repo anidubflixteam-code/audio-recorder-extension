@@ -1,4 +1,3 @@
-// background.js - FIXED VERSION
 let pendingRecording = null;
 
 // Function to check if offscreen document is active
@@ -24,54 +23,35 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
             reasons: ['USER_MEDIA'],
             justification: 'Record high quality audio from tab'
           });
+          // Once created, wait for 'offscreen-ready' message
         } catch (err) {
           console.error('Failed to create offscreen doc:', err);
-          sendErrorToPopup('Could not initialize recording engine (Offscreen failed).');
+          sendErrorToPopup('Could not initialize recording engine.');
           pendingRecording = null;
         }
       } else {
         // If already exists, start recording immediately
-        chrome.runtime.sendMessage({
-          target: 'offscreen',
-          type: 'start-recording',
-          streamId: streamId,
-          tabTitle: tabTitle,
-          bitrate: bitrate
-        });
-        pendingRecording = null;
+        startOffscreenRecording(streamId, tabTitle, bitrate);
       }
 
     } else if (message.type === 'offscreen-ready') {
       if (pendingRecording) {
-        chrome.runtime.sendMessage({
-          target: 'offscreen',
-          type: 'start-recording',
-          streamId: pendingRecording.streamId,
-          tabTitle: pendingRecording.tabTitle,
-          bitrate: pendingRecording.bitrate
-        });
-        pendingRecording = null;
+        startOffscreenRecording(pendingRecording.streamId, pendingRecording.tabTitle, pendingRecording.bitrate);
       }
 
     } else if (message.type === 'stop') {
-      if (await hasOffscreenDocument()) {
-        chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop-recording' });
-      }
+      chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop-recording' }).catch(() => {});
 
     } else if (message.type === 'pause') {
-      if (await hasOffscreenDocument()) {
-        chrome.runtime.sendMessage({ target: 'offscreen', type: 'pause-recording' });
-      }
+      chrome.runtime.sendMessage({ target: 'offscreen', type: 'pause-recording' }).catch(() => {});
 
     } else if (message.type === 'resume') {
-      if (await hasOffscreenDocument()) {
-        chrome.runtime.sendMessage({ target: 'offscreen', type: 'resume-recording' });
-      }
+      chrome.runtime.sendMessage({ target: 'offscreen', type: 'resume-recording' }).catch(() => {});
 
     } else if (message.type === 'download-file') {
-      // Use official Chrome Downloads API
-      const cleanTitle = (message.tabTitle || 'audio').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const filename = `Audio_${cleanTitle}_${Date.now()}.webm`;
+      const cleanTitle = (message.tabTitle || 'audio').replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 50);
+      const formattedDate = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19); // YYYY-MM-DDTHH-mm-ss
+      const filename = `AudioCapture_${cleanTitle}_${formattedDate}.webm`;
 
       chrome.downloads.download({
         url: message.url,
@@ -89,21 +69,32 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
 });
 
+function startOffscreenRecording(streamId, tabTitle, bitrate) {
+    chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: 'start-recording',
+        streamId: streamId,
+        tabTitle: tabTitle,
+        bitrate: bitrate
+      });
+      pendingRecording = null;
+}
+
 function sendErrorToPopup(msg) {
   chrome.runtime.sendMessage({
     target: 'popup',
     type: 'recording-error',
     error: msg
-  }).catch(() => { /* popup closed */ });
+  }).catch(() => { /* popup closed, ignore */ });
 }
 
 async function cleanup(isNormalStop) {
   await chrome.storage.local.set({ isRecording: false, isPaused: false });
   
-  // Delay closing to allow download handoff
+  // Important: Give download a moment to register before killing the offscreen doc
   setTimeout(async () => {
       if (await hasOffscreenDocument()) {
-        try { await chrome.offscreen.closeDocument(); } catch(e) {}
+        try { await chrome.offscreen.closeDocument(); } catch(e) { console.log("Offscreen already closed"); }
       }
 
       if (isNormalStop) {
@@ -112,5 +103,5 @@ async function cleanup(isNormalStop) {
           type: 'recording-stopped-ack'
         }).catch(() => { /* popup closed */ });
       }
-  }, 1000);
+  }, 1500);
 }
