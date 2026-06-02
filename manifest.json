@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Audio Capture Pro",
-  "version": "1.0",
-  "description": "A modern browser extension to capture any tab's audio in high quality.",
+  "version": "1.1",
+  "description": "A professional browser extension to capture any tab's audio in high quality.",
   "permissions": [
     "tabCapture",
     "offscreen",
     "activeTab",
-    "storage"
+    "storage",
+    "downloads"
   ],
   "background": {
     "service_worker": "background.js"
