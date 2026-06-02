@@ -17,9 +17,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const settingsPanel = document.getElementById('settings-panel');
 
   // STEP 1: Fetch active tab immediately on load synchronously 
-  // so the user gesture token is retained on click
   chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    activeTab = tab;
+    if (tab) {
+      activeTab = tab;
+    } else {
+      tabIndicator.innerText = "No active tab found.";
+    }
   });
 
   // STEP 2: Restore state from local storage
@@ -32,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (isRecordingState) {
-      setRecordingUI(result.tabTitle);
+      setRecordingUI(result.tabTitle || 'Unknown Tab');
       settingsPanel.style.display = 'none';
 
       if (isPausedState) {
@@ -40,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elapsedTime = result.pausedTime || 0;
         updateTimerUI(elapsedTime);
       } else {
-        elapsedTime = result.pausedTime || (Date.now() - result.startTime);
+        elapsedTime = result.pausedTime || (Date.now() - (result.startTime || Date.now()));
         startTimer(Date.now() - elapsedTime);
       }
     } else {
@@ -51,14 +54,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // STEP 3: Handle Start/Stop Record click (Guaranteed synchronous User Gesture)
   recordBtn.addEventListener('click', () => {
     if (!isRecordingState) {
-      if (!activeTab) {
-        alert('Please wait, tab details are loading.');
+      if (!activeTab || !activeTab.id) {
+        alert('Cannot record: No active tab identified. Please refresh the page.');
         return;
       }
 
-      // Check for chrome:// pages, which cannot be captured
-      if (activeTab.url.startsWith('chrome://') || activeTab.url.startsWith('chrome-extension://') || activeTab.url.includes('chromewebstore')) {
-        alert('Security Alert: Chrome does not allow capturing internal browser pages or the Chrome Web Store. Please try on a regular website like YouTube or Wikipedia.');
+      // Check for chrome:// pages
+      if (activeTab.url.startsWith('chrome://') || activeTab.url.startsWith('chrome-extension://') || activeTab.url.startsWith('edge://') || activeTab.url.includes('chromewebstore')) {
+        alert('Security Alert: Browser security prevents recording internal pages or web stores. Please try on a regular website like YouTube.');
         return;
       }
 
@@ -66,8 +69,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Request stream ID (Synchronous user gesture call)
       chrome.tabCapture.getMediaStreamId({ targetTabId: activeTab.id }, (streamId) => {
-        if (!streamId) {
-          alert('Could not start capture. Please refresh the page and try again.');
+        // IMPROVED: Check for errors getting the stream
+        if (chrome.runtime.lastError || !streamId) {
+          const errorMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : 'Unknown error getting stream ID';
+          console.error("Capture failed:", errorMsg);
+          alert('Could not start capture. Try refreshing the page.\nError: ' + errorMsg);
           return;
         }
 
@@ -102,6 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } else {
       // Stop Capture
+      recordBtn.disabled = true; // Prevent double clicks during stop process
+      btnText.innerText = "Stopping...";
       chrome.runtime.sendMessage({ target: 'background', type: 'stop' });
     }
   });
@@ -129,21 +137,22 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.onMessage.addListener((message) => {
     if (message.target === 'popup') {
       if (message.type === 'recording-stopped-ack') {
-        isRecordingState = false;
-        isPausedState = false;
-        setIdleUI();
-        stopTimer();
-        settingsPanel.style.display = 'flex';
+        resetToIdle();
       } else if (message.type === 'recording-error') {
-        alert('Recording Error: ' + message.error);
-        isRecordingState = false;
-        isPausedState = false;
-        setIdleUI();
-        stopTimer();
-        settingsPanel.style.display = 'flex';
+        alert('Recording Error:\n' + message.error);
+        resetToIdle();
       }
     }
   });
+
+  function resetToIdle() {
+    isRecordingState = false;
+    isPausedState = false;
+    setIdleUI();
+    stopTimer();
+    settingsPanel.style.display = 'flex';
+    recordBtn.disabled = false;
+  }
 
   // UI States helpers
   function setRecordingUI(title) {
@@ -151,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnText.innerText = 'Stop Capture';
     pauseBtn.style.display = 'flex';
     pauseBtnText.innerText = 'Pause';
-    tabIndicator.innerText = `Recording: ${title}`;
+    tabIndicator.innerText = `Recording: ${title.substring(0, 40)}${title.length > 40 ? '...' : ''}`;
     visualizer.className = 'visualizer-container recording';
   }
 
@@ -164,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recordBtn.className = 'btn btn-start';
     btnText.innerText = 'Start Capture';
     pauseBtn.style.display = 'none';
-    tabIndicator.innerText = 'Ready to record tab audio';
+    tabIndicator.innerText = activeTab ? `Ready to record: ${activeTab.title.substring(0, 30)}...` : 'Ready to record tab audio';
     visualizer.className = 'visualizer-container';
   }
 
@@ -193,9 +202,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateTimerUI(timeInMs) {
-    const seconds = Math.floor((timeInMs / 1000) % 60);
-    const minutes = Math.floor((timeInMs / (1000 * 60)) % 60);
-    const hours = Math.floor((timeInMs / (1000 * 60 * 60)));
+    const totalSeconds = Math.floor(timeInMs / 1000);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60) % 60;
+    const hours = Math.floor(totalSeconds / 3600);
 
     const formatted = 
       (hours > 0 ? String(hours).padStart(2, '0') + ':' : '') +
