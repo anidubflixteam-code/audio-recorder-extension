@@ -2,6 +2,12 @@ let mediaRecorder;
 let recordedChunks = [];
 let audioContext;
 
+// Signal the background script that offscreen document is ready
+chrome.runtime.sendMessage({
+  target: 'background',
+  type: 'offscreen-ready'
+});
+
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.target === 'offscreen') {
     if (message.type === 'start-recording') {
@@ -79,8 +85,9 @@ async function startRecording(streamId, tabTitle) {
 
   } catch (error) {
     console.error('Error in offscreen capture:', error);
+    // Notify background for safe state cleanup
     chrome.runtime.sendMessage({ 
-      target: 'popup', 
+      target: 'background', 
       type: 'recording-error', 
       error: error.message 
     });
