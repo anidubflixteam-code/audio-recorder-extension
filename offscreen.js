@@ -25,6 +25,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
 async function startRecording(streamId, tabTitle, bitrate) {
   try {
+    // 1. Get the Tab Media Stream
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         mandatory: {
@@ -36,12 +37,22 @@ async function startRecording(streamId, tabTitle, bitrate) {
     });
 
     streamInstance = stream;
+
+    // 2. Set up Audio Context so the user can still hear the audio while recording
     audioContext = new AudioContext();
+    
+    // IMPORTANT FIX: Ensure context is running (sometimes it starts suspended)
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
     const source = audioContext.createMediaStreamSource(stream);
     source.connect(audioContext.destination);
 
+    // 3. Configure Media Recorder
     const options = {
-      mimeType: 'audio/webm;codecs=opus',
+      // Try supported mime types in order of preference
+      mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm',
       audioBitsPerSecond: parseInt(bitrate) || 256000 
     };
 
@@ -54,8 +65,10 @@ async function startRecording(streamId, tabTitle, bitrate) {
       }
     };
 
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onstop = async () => {
       const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+      
+      // Important: keep the blob URL valid until downloaded
       const url = URL.createObjectURL(blob);
       
       // Send blob URL to background to download via chrome.downloads
@@ -66,21 +79,29 @@ async function startRecording(streamId, tabTitle, bitrate) {
         tabTitle: tabTitle
       });
 
-      // Stop tracks
-      streamInstance.getTracks().forEach(track => track.stop());
+      // Cleanup tracks and context
+      if (streamInstance) {
+          streamInstance.getTracks().forEach(track => track.stop());
+      }
       if (audioContext) {
-        audioContext.close();
+        // Small delay to ensure final audio bits are processed
+        setTimeout(() => audioContext.close(), 500);
       }
     };
 
-    mediaRecorder.start();
+    // START RECORDING
+    mediaRecorder.start(1000); // Slice every second for safer data handling
 
   } catch (error) {
     console.error('Offscreen error:', error);
+    // Stop tracks if they were started before the error
+    if (streamInstance) {
+        streamInstance.getTracks().forEach(track => track.stop());
+    }
     chrome.runtime.sendMessage({ 
       target: 'background', 
       type: 'recording-error', 
-      error: error.message 
+      error: error.message || 'Failed to start recording in offscreen document.'
     });
   }
 }
